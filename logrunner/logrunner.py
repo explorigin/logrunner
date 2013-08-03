@@ -57,6 +57,7 @@ class LogRunner:
 			cfg.set('config', 'ramsize', '16')
 			cfg.set('config', 'path', '/var/log')
 			cfg.set('config', 'gzpath', '/var/logstore')
+			cfg.set('config', 'zramdevice', '')
 			cfg.set('ignore', 'folders', 'journal,sa')
 			cfg.set('ignore', 'files', 'lastlog,faillog')
 			logging.warning("Couldn't find the config file. Using defaults.")
@@ -65,16 +66,43 @@ class LogRunner:
 		self.ramsize = cfg.getint('config', 'ramsize') * 1048576
 		self.path = cfg.get('config', 'path')
 		self.gzpath = cfg.get('config', 'gzpath')
+		self.zramdevice = cfg.get('config', 'zramdevice')
 		self.igfolds = cfg.get('ignore', 'folders').split(',')
 		self.igfiles = cfg.get('ignore', 'files').split(',')
 
 	def install(self):
-		self.logmount = tempfile.mkdtemp()
-		try:
-			subprocess.call(['mount', '-t', 'tmpfs', '-o',
+		if self.zramdevice.isdigit():
+			self.logmount = '/tmp/logs'
+			device = '/dev/zram{}'.format(self.zramdevice)
+			mount_commands = [
+				'mount',
+				'-o',
+				'nosuid,noatime,noexec,nodev,mode=0755,size={}'.format(self.ramsize),
+				device,
+				self.logmount
+			]
+
+			with open('/sys/block/zram{}/disksize'.format(self.zramdevice), 'w') as f:
+				f.write(str(self.ramsize))
+
+			subprocess.call(['mkfs.ext2', device]);
+
+		else:
+			self.logmount = tempfile.mkdtemp()
+			device = 'logrunner'
+
+			mount_commands = [
+				'mount',
+				'-t',
+				'tmpfs',
+				'-o',
 				'nosuid,noexec,nodev,mode=0755,size={}'.format(self.ramsize),
-				'logrunner',
-				self.logmount])
+				device,
+				self.logmount
+			]
+
+		try:
+			subprocess.call(mount_commands)
 		except Exception, e:
 			logging.error(e)
 			logging.critical('Creation of ramdisk/mount failed, exiting')
@@ -170,7 +198,17 @@ class LogRunner:
 			else:
 				shutil.copy2(path, self.path)
 
-		subprocess.call(['umount', 'logrunner'])
+		if self.zramdevice.isdigit():
+			device = '/dev/zram{}'.format(self.zramdevice)
+		else:
+			device = 'logrunner'
+
+		subprocess.call(['umount', device])
 		shutil.rmtree(self.logmount)
+
+		if self.zramdevice.isdigit():
+			with open('/sys/block/zram{}/disksize'.format(self.zramdevice), 'w') as f:
+				f.write('0')
+
 		logging.info('LogRunner stopped successfully')
 		sys.exit(0)
