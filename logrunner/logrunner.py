@@ -68,6 +68,7 @@ class LogRunner:
 		self.igfolds = cfg.get('ignore', 'folders').split(',')
 		self.igfiles = cfg.get('ignore', 'files').split(',')
 
+	def install(self):
 		self.logmount = tempfile.mkdtemp()
 		try:
 			subprocess.call(['mount', '-t', 'tmpfs', '-o',
@@ -97,20 +98,23 @@ class LogRunner:
 
 		subprocess.call(['mount', '--bind', self.path, self.logmount])
 
+	def watch(self):
 		# Normal exit when terminated
 		atexit.register(self.stop)
 		signal.signal(signal.SIGTERM, lambda signum, stack_frame: sys.exit(0))
 		signal.signal(signal.SIGINT, lambda signum, stack_frame: sys.exit(0))
 
 		logging.info('LogRunner is up and hunting for replicants')
-
 		while self.stoploop == False:
-			for path, dirs, files in os.walk(self.path):
-				if not any(x in path for x in self.igfolds):
-					for logfile in files:
-						if not any(x in logfile for x in self.igfiles):
-							self.check(os.path.join(path, logfile))
+			self.check()
 			time.sleep(60)
+
+	def check(self):
+		for path, dirs, files in os.walk(self.path):
+			if not any(x in path for x in self.igfolds):
+				for logfile in files:
+					if not any(x in logfile for x in self.igfiles):
+						self.checkFile(os.path.join(path, logfile))
 
 	def retire(self, logfile):
 		# Write the log to backup location, and flush memory
@@ -148,7 +152,7 @@ class LogRunner:
 			logging.info('%s retired to %s' % (absin, absout))
 		open(absin, 'w').close()
 
-	def check(self, logfile):
+	def checkFile(self, logfile):
 		# Check memory use. If too high, force log write and flush.
 		if os.path.getsize(logfile) >= self.size:
 			self.retire(logfile.split(self.path, 1)[1].lstrip('/'))

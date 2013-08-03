@@ -17,7 +17,9 @@ from logrunner.daemon import Daemon
 class LRDaemon(Daemon):
     def run(self):
         from logrunner.logrunner import LogRunner
-        LogRunner(self.config_file, 'tofile')
+        runner = LogRunner(self.config_file, 'tofile')
+        runner.install()
+        runner.watch()
 
 
 def usage():
@@ -65,7 +67,10 @@ if __name__ == '__main__':
 
     if action == 'run':
         from logrunner.logrunner import LogRunner
-        LogRunner(config_file, 'stdout')
+        runner = LogRunner(config_file, 'stdout')
+        runner.install()
+        runner.watch()
+
     else:
         lrd = LRDaemon('/var/run/logrunner.pid',stdout='/var/log/logrunner.log')
         lrd.config_file = config_file
